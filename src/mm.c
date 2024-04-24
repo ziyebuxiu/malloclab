@@ -79,9 +79,9 @@ static void place(void *bp, size_t asize);
 static void add_to_freelist(void *bp);
 static void remove_from_freelist(void *bp);
 
-static char *heap_listp;
-static char *pre_listp;
-static char *free_listp;
+static char *heap_listp = 0;
+static char *pre_listp = 0;
+static char *free_listp = 0;
 
 /*
  * mm_init - initialize the malloc package.
@@ -127,6 +127,7 @@ static void *extend_heap(size_t words)
 static void place(void *bp, size_t asize)
 {
     size_t csize = GET_SIZE(HDRP(bp));
+
     if ((csize - asize) >= (2 * DSIZE))
     {
         PUT(HDRP(bp), PACK(asize, 1));
@@ -134,13 +135,11 @@ static void place(void *bp, size_t asize)
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize - asize, 0));
         PUT(FTRP(bp), PACK(csize - asize, 0));
-        add_to_freelist(bp);
     }
     else
     {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
-        remove_from_freelist(bp);
     }
 }
 
@@ -325,22 +324,29 @@ static void *next_fit(size_t size)
 
     return NULL; /* No fit */
 }
-static void add_to_freelist(void *bp) {
+static void add_to_freelist(void *bp)
+{
     NEXT_FREEP(bp) = free_listp;
     PREV_FREEP(bp) = NULL;
-    if (free_listp != NULL) {
+    if (free_listp != NULL)
+    {
         PREV_FREEP(free_listp) = bp;
     }
     free_listp = bp;
 }
 
-static void remove_from_freelist(void *bp) {
-    if (PREV_FREEP(bp)) {
+static void remove_from_freelist(void *bp)
+{
+    if (PREV_FREEP(bp))
+    {
         NEXT_FREEP(PREV_FREEP(bp)) = NEXT_FREEP(bp);
-    } else {
+    }
+    else
+    {
         free_listp = NEXT_FREEP(bp);
     }
-    if (NEXT_FREEP(bp)) {
+    if (NEXT_FREEP(bp))
+    {
         PREV_FREEP(NEXT_FREEP(bp)) = PREV_FREEP(bp);
     }
 }
