@@ -97,12 +97,102 @@ static void delete(void *ptr);
 static char *heap_listp;
 static char *pre_listp;
 
-// static void insert(void *ptr, size_t size){
+static void insert(void *ptr, size_t size)
+{
+    int index = 0;
+    void *searchp = NULL;
+    void *goalp = NULL;
+    size_t tmp_size = size;
+    while ((index < MAXLEN) && (tmp_size < 1))
+    {
+        tmp_size >>= 1;
+        index++;
+    }
+    searchp = segregated_free_list[index];
+    while ((searchp) && (tmp_size > GET_SIZE(HDRP(searchp))))
+    {
+        goalp = searchp;
+        searchp = PREV(searchp);
+    }
 
-// }
-// static void delete(void *ptr){
+    if (searchp)
+    {
+        /*case 1: 在中间插入 ->xx->√->xx*/
+        if (goalp)
+        {
+            SET(PREV_PTR(ptr), searchp);
+            SET(NEXT_PTR(searchp), ptr);
+            SET(PREV_PTR(goalp), ptr);
+            SET(NEXT_PTR(ptr), goalp);
+        }
+        /*case 2: 在开头插入 head->√->xx*/
+        else
+        {
+            SET(PREV_PTR(ptr), searchp);
+            SET(NEXT_PTR(searchp), ptr);
+            SET(NEXT_PTR(ptr), NULL);
+            segregated_free_list[index] = ptr;
+        }
+    }
+    else
+    {
+        /*case 3: 在尾部插入 ->tail->√*/
+        if (goalp)
+        {
+            SET(PREV_PTR(ptr), NULL);
+            SET(NEXT_PTR(ptr), goalp);
+            SET(PREV_PTR(goalp), ptr);
+        }
+        /*case 4: 空链*/
+        else
+        {
+            SET(PREV_PTR(ptr), NULL);
+            SET(NEXT_PTR(ptr), NULL);
+            segregated_free_list[index] = ptr;
+        }
+    }
+}
+static void delete(void *ptr)
+{
+    size_t size = GET_SIZE(HDRP(ptr));
+    int index = 0;
+    while ((index < MAXLEN) && (size > 1))
+    {
+        size >>= 1;
+        index++;
+    }
 
-// }
+    void *prev = PREV(ptr);
+    void *next = NEXT(ptr);
+    if (prev)
+    {
+        if (next)
+        {
+            /*case 1: xxx->ptr->xxx*/
+            SET(NEXT_PTR(ptr), next);
+            SET(PREV_PTR(ptr), prev);
+        }
+        else
+        {
+            /*case 2: head->ptr->xxx*/
+            SET(NEXT_PTR(ptr), NULL);
+            segregated_free_list[index] = prev;
+        }
+    }
+    else
+    {
+        if (next)
+        {
+            /*case 3: xxx->ptr*/
+            SET(PREV_PTR(ptr), NULL);
+        }
+        else
+        {
+            /*case 4: */
+            segregated_free_list[index] = NULL;
+        }
+    }
+}
 /*
  * mm_init - initialize the malloc package.
  */
