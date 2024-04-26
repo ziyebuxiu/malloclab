@@ -232,30 +232,63 @@ void *mm_malloc(size_t size)
 
 void *mm_realloc(void *ptr, size_t size)
 {
+    void *newptr = ptr;
+
     if (ptr == NULL)
         return mm_malloc(size);
     if (size == 0)
     {
-        mm_free(ptr);
+        // mm_free(ptr);
         return NULL;
     }
-    size_t adjust_size = ALIGN(size);
+    // 内存对齐
+    size_t adjust_size;
+    if (size <= DSIZE)
+        adjust_size = 2 * DSIZE;
+    else
+        adjust_size = ALIGN(size);
+
+    // 若size小于原来块大小，直接返回原来的块
     size_t old_size = GET_SIZE(HDRP(ptr));
-    if (adjust_size < old_size)
+    int remain = (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr)))) - adjust_size;
+    if (adjust_size <= old_size)
     {
         return ptr;
     }
-    void *newptr;
-    size_t copySize;
-    newptr = mm_malloc(size);
-    if (newptr == NULL)
-        return NULL;
-    size = GET_SIZE(HDRP(ptr));
-    copySize = GET_SIZE(HDRP(newptr));
-    if (size < copySize)
-        copySize = size;
-    memmove(newptr, ptr, copySize - WSIZE);
-    mm_free(ptr);
+    // 否则:检查物理后继是否free
+    else if ((!GET_ALLOC(HDRP(NEXT_BLKP(ptr)))) || (!GET_SIZE(HDRP(NEXT_BLKP(ptr)))))
+    {
+        if (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr))) < adjust_size)
+        {
+            if (extend_heap(MAX(CHUNKSIZE, -remain)) == NULL)
+            {
+                return NULL;
+            }
+            remain += MAX(-remain, CHUNKSIZE);
+        }
+        // 从空闲表里删除
+        // delete (NEXT_BLKP(ptr));
+        PUT(HDRP(ptr), adjust_size + remain + 1);
+        PUT(FTRP(ptr), adjust_size + remain + 1);
+    }
+    // 没有新的可用连续空闲块，申请新的空闲块
+    else
+    {
+        newptr = mm_malloc(size);
+        memcpy(newptr, ptr, GET_SIZE(HDRP(ptr)));
+        mm_free(ptr);
+    }
+    // void *newptr;
+    // size_t copySize;
+    // newptr = mm_malloc(size);
+    // if (newptr == NULL)
+    //     return NULL;
+    // size = GET_SIZE(HDRP(ptr));
+    // copySize = GET_SIZE(HDRP(newptr));
+    // if (size < copySize)
+    //     copySize = size;
+    // memmove(newptr, ptr, copySize - WSIZE);
+    // mm_free(ptr);
     return newptr;
 }
 
