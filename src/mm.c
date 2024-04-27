@@ -38,7 +38,8 @@ team_t team = {
 #define ALIGNMENT 8
 
 /* rounds up to the nearest multiple of ALIGNMENT */
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
+// #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
+#define ALIGN(size) (size + (ALIGNMENT - 1)) / ALIGNMENT *ALIGNMENT
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
@@ -76,8 +77,8 @@ team_t team = {
 #define PREV_PTR(ptr) ((char *)(ptr))
 #define NEXT_PTR(ptr) ((char *)(ptr) + WSIZE)
 
-#define PREV(ptr) (*(char **)(ptr))
-#define NEXT(ptr) (*(char **)(NEXT_PTR(ptr)))
+#define GET_PREV(ptr) (*(char **)(ptr))
+#define GET_NEXT(ptr) (*(char **)(NEXT_PTR(ptr)))
 
 // 空闲链表最大个数
 #define MAXLEN 16
@@ -100,8 +101,8 @@ static char *pre_listp;
 static void insert(void *ptr, size_t size)
 {
     int index = 0;
-    void *searchp = NULL;
-    void *goalp = NULL;
+    void *searchp = NULL; // 在segregated list中找
+    void *insertp = NULL; // 找到index以后在链表里找
     size_t tmp_size = size;
     while ((index < MAXLEN) && (tmp_size < 1))
     {
@@ -111,37 +112,37 @@ static void insert(void *ptr, size_t size)
     searchp = segregated_free_list[index];
     while ((searchp) && (tmp_size > GET_SIZE(HDRP(searchp))))
     {
-        goalp = searchp;
-        searchp = PREV(searchp);
+        insertp = searchp;
+        searchp = GET_NEXT(searchp);
     }
 
     if (searchp)
     {
-        /*case 1: 在中间插入 ->xx->√->xx*/
-        if (goalp)
+        /*case 1: 在中间插入 ->insertp->√->searchp*/
+        if (insertp)
         {
-            SET(PREV_PTR(ptr), searchp);
-            SET(NEXT_PTR(searchp), ptr);
-            SET(PREV_PTR(goalp), ptr);
-            SET(NEXT_PTR(ptr), goalp);
+            SET(PREV_PTR(ptr), insertp);
+            SET(NEXT_PTR(insertp), ptr);
+            SET(PREV_PTR(searchp), ptr);
+            SET(NEXT_PTR(ptr), searchp);
         }
-        /*case 2: 在开头插入 head->√->xx*/
+        /*case 2: 在开头插入 head->√->searchp*/
         else
         {
-            SET(PREV_PTR(ptr), searchp);
+            SET(PREV_PTR(ptr), NULL);
             SET(NEXT_PTR(searchp), ptr);
-            SET(NEXT_PTR(ptr), NULL);
+            SET(NEXT_PTR(ptr), searchp);
             segregated_free_list[index] = ptr;
         }
     }
     else
     {
         /*case 3: 在尾部插入 ->tail->√*/
-        if (goalp)
+        if (insertp)
         {
-            SET(PREV_PTR(ptr), NULL);
-            SET(NEXT_PTR(ptr), goalp);
-            SET(PREV_PTR(goalp), ptr);
+            SET(PREV_PTR(ptr), insertp);
+            SET(NEXT_PTR(ptr), NULL);
+            SET(NEXT_PTR(insertp), ptr);
         }
         /*case 4: 空链*/
         else
@@ -162,20 +163,20 @@ static void delete(void *ptr)
         index++;
     }
 
-    void *prev = PREV(ptr);
-    void *next = NEXT(ptr);
+    void *prev = GET_PREV(ptr);
+    void *next = GET_NEXT(ptr);
     if (prev)
     {
         if (next)
         {
-            /*case 1: xxx->ptr->xxx*/
-            SET(NEXT_PTR(ptr), next);
-            SET(PREV_PTR(ptr), prev);
+            /*case 1: prev->ptr->next*/
+            SET(NEXT_PTR(GET_PREV(ptr)), next);
+            SET(PREV_PTR(GET_NEXT(ptr)), prev);
         }
         else
         {
-            /*case 2: head->ptr->xxx*/
-            SET(NEXT_PTR(ptr), NULL);
+            /*case 2: prev->ptr->next*/
+            SET(NEXT_PTR(GET_PREV(ptr)), NULL);
             segregated_free_list[index] = prev;
         }
     }
@@ -183,8 +184,8 @@ static void delete(void *ptr)
     {
         if (next)
         {
-            /*case 3: xxx->ptr*/
-            SET(PREV_PTR(ptr), NULL);
+            /*case 3: ->ptr->next*/
+            SET(PREV_PTR(GET_NEXT(ptr)), NULL);
         }
         else
         {
@@ -214,6 +215,7 @@ int mm_init(void)
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE0) == NULL)
         return -1;
+    printf("heap_listp: %c\n", heap_listp);
     return 0;
 }
 
@@ -354,7 +356,7 @@ void *mm_malloc(size_t size)
             // 在链中找到空闲块
             while (bp && (asize > GET_SIZE(HDRP(bp))))
             {
-                bp = PREV(bp);
+                bp =GET_PREV(bp);
             }
             if (bp)
                 break;
