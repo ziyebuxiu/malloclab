@@ -101,7 +101,7 @@ int mm_init(void)
     pre_listp = heap_listp;
     free_listp = NULL;
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-    if (extend_heap((CHUNKSIZE) / WSIZE) == NULL)
+    if (extend_heap(2 * DSIZE / WSIZE) == NULL)
         return -1;
     return 0;
 }
@@ -317,8 +317,8 @@ void *mm_realloc(void *ptr, size_t size)
         memmove(newptr, ptr, copySize - WSIZE);
         mm_free(ptr);
     }
-    printf("ptr: %p\n", ptr);
-    printf("newptr2: %p\n", newptr);
+    // printf("ptr: %p\n", ptr);
+    // printf("newptr2: %p\n", newptr);
     return newptr;
 }
 
