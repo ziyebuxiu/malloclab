@@ -47,7 +47,7 @@ team_t team = {
 #define DSIZE 8 /* Double word size (bytes) */
 #define FSIZE 16
 #define CHUNKSIZE (1 << 12) /* Extend heap by this amount (bytes) */
-
+#define CHUNKSIZE0 (1 << 6)
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
 /* Pack a size and allocated bit into a word */
@@ -78,8 +78,8 @@ static void *coalesce(void *bp);
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
 static void *next_fit(size_t size);
-static void add_to_freelist(void *bp);
-static void remove_from_freelist(void *bp);
+// static void add_to_freelist(void *bp);
+// static void remove_from_freelist(void *bp);
 
 static char *heap_listp = 0;
 static char *pre_listp = 0;
@@ -101,7 +101,7 @@ int mm_init(void)
     pre_listp = heap_listp;
     free_listp = NULL;
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-    if (extend_heap(2 * DSIZE / WSIZE) == NULL)
+    if (extend_heap((CHUNKSIZE0) / WSIZE) == NULL)
         return -1;
     return 0;
 }
@@ -199,13 +199,40 @@ static void *coalesce(void *bp)
 }
 static void *find_fit(size_t asize)
 {
-    char *bp;
-    for (bp = free_listp; bp != NULL; bp = NEXT_FREEP(bp))
+    char *bp = pre_listp;
+    while (GET_SIZE(HDRP(bp)) > 0)
     {
-        if (asize <= GET_SIZE(HDRP(bp)))
+        if (!GET_ALLOC(HDRP(bp)) && GET_SIZE(HDRP(bp)) >= asize)
         {
+            pre_listp = bp;
             return bp;
         }
+        else
+        {
+            bp = NEXT_BLKP(bp);
+        }
+    }
+    bp = heap_listp;
+    size_t min = 20 * (1 << 20);
+    char *imin = pre_listp;
+    int flag = 0;
+    while (bp != pre_listp)
+    {
+        if (!GET_ALLOC(HDRP(bp)) && GET_SIZE(HDRP(bp)) >= asize)
+        {
+            flag = 1;
+            if (GET_SIZE(HDRP(bp)) - asize < min)
+            {
+                min = GET_SIZE(HDRP(bp)) - asize;
+                imin = bp;
+            }
+        }
+        bp = NEXT_BLKP(bp);
+    }
+    if (flag)
+    {
+        pre_listp = imin;
+        return imin;
     }
     return NULL;
 }
@@ -246,6 +273,7 @@ void *mm_malloc(size_t size)
 
 void *mm_realloc(void *ptr, size_t size)
 {
+    printf("realloc start------------------------------\n");
     void *newptr = ptr;
 
     if (ptr == NULL)
@@ -269,11 +297,13 @@ void *mm_realloc(void *ptr, size_t size)
         int remain = (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr)))) - adjust_size;
         if (adjust_size <= old_size)
         {
+            printf("case 1\n");
             return ptr;
         }
         // 否则:检查物理后继是否free
         else if ((!GET_ALLOC(HDRP(NEXT_BLKP(ptr)))) || (!GET_SIZE(HDRP(NEXT_BLKP(ptr)))))
         {
+            printf("case 2\n");
             if (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr))) < adjust_size)
             {
                 if (extend_heap(MAX(CHUNKSIZE, -remain)) == NULL)
@@ -290,10 +320,13 @@ void *mm_realloc(void *ptr, size_t size)
         // 没有新的可用连续空闲块，申请新的空闲块
         else
         {
+            printf("case 3\n");
             newptr = mm_malloc(size);
-            // printf("ptr: %d\n", ptr);
-            memmove(newptr, ptr, GET_SIZE(HDRP(ptr)) - WSIZE);
-            // printf("newptr2: %d\n", newptr);
+            size_t copySize = GET_SIZE(HDRP(newptr));
+            size = GET_SIZE(HDRP(ptr));
+            if (size < copySize)
+                copySize = size;
+            memmove(newptr, ptr, copySize - WSIZE);
             mm_free(ptr);
         }
     }
@@ -319,6 +352,7 @@ void *mm_realloc(void *ptr, size_t size)
     }
     // printf("ptr: %p\n", ptr);
     // printf("newptr2: %p\n", newptr);
+    printf("realloc end------------------------------\n");
     return newptr;
 }
 
