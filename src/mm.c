@@ -72,10 +72,12 @@ team_t team = {
 #define NEXT_FREEP(bp) (*(char **)(bp))
 #define PREV_FREEP(bp) (*(char **)((char *)(bp) + WSIZE))
 
+#define DEBUG 0
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
+static void *next_fit(size_t size);
 static void add_to_freelist(void *bp);
 static void remove_from_freelist(void *bp);
 
@@ -96,7 +98,7 @@ int mm_init(void)
     PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
     PUT(heap_listp + (3 * WSIZE), PACK(0, 1));     /* Epilogue header */
     heap_listp += (2 * WSIZE);
-    // pre_listp = heap_listp;
+    pre_listp = heap_listp;
     free_listp = NULL;
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap((CHUNKSIZE) / WSIZE) == NULL)
@@ -141,6 +143,7 @@ static void place(void *bp, size_t asize)
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
     }
+    pre_listp = bp;
 }
 
 /*
@@ -162,25 +165,36 @@ static void *coalesce(void *bp)
     size_t size = GET_SIZE(HDRP(bp));
     if (prev_alloc && next_alloc)
     {
-        add_to_freelist(bp);
+        // add_to_freelist(bp);
         return bp;
     }
-    if (!prev_alloc)
+    else if (!prev_alloc && next_alloc)
     {
-        remove_from_freelist(PREV_BLKP(bp));
+        // remove_from_freelist(PREV_BLKP(bp));
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
-    if (!next_alloc)
+    else if (prev_alloc && !next_alloc)
     {
-        remove_from_freelist(NEXT_BLKP(bp));
+        // remove_from_freelist(NEXT_BLKP(bp));
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
     }
-    add_to_freelist(bp);
+    else
+    {
+        // remove_from_freelist(PREV_BLKP(bp));
+        // remove_from_freelist(NEXT_BLKP(bp));
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) +
+                GET_SIZE(FTRP(NEXT_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    }
+    // add_to_freelist(bp);
+    pre_listp = bp;
     return bp;
 }
 static void *find_fit(size_t asize)
@@ -216,7 +230,7 @@ void *mm_malloc(size_t size)
         asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
 
     /* Search the free list for a fit */
-    if ((bp = find_fit(asize)) != NULL)
+    if ((bp = next_fit(asize)) != NULL)
     {
         place(bp, asize);
         return bp;
@@ -238,57 +252,73 @@ void *mm_realloc(void *ptr, size_t size)
         return mm_malloc(size);
     if (size == 0)
     {
-        // mm_free(ptr);
+        mm_free(ptr);
         return NULL;
     }
-    // 内存对齐
-    size_t adjust_size;
-    if (size <= DSIZE)
-        adjust_size = 2 * DSIZE;
-    else
-        adjust_size = ALIGN(size);
+    if (DEBUG)
+    {
+        // 内存对齐
+        size_t adjust_size;
+        if (size <= DSIZE)
+            adjust_size = 2 * DSIZE;
+        else
+            adjust_size = ALIGN(size);
 
-    // 若size小于原来块大小，直接返回原来的块
-    size_t old_size = GET_SIZE(HDRP(ptr));
-    int remain = (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr)))) - adjust_size;
-    if (adjust_size <= old_size)
-    {
-        return ptr;
-    }
-    // 否则:检查物理后继是否free
-    else if ((!GET_ALLOC(HDRP(NEXT_BLKP(ptr)))) || (!GET_SIZE(HDRP(NEXT_BLKP(ptr)))))
-    {
-        if (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr))) < adjust_size)
+        // 若size小于原来块大小，直接返回原来的块
+        size_t old_size = GET_SIZE(HDRP(ptr));
+        int remain = (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr)))) - adjust_size;
+        if (adjust_size <= old_size)
         {
-            if (extend_heap(MAX(CHUNKSIZE, -remain)) == NULL)
-            {
-                return NULL;
-            }
-            remain += MAX(-remain, CHUNKSIZE);
+            return ptr;
         }
-        // 从空闲表里删除
-        // delete (NEXT_BLKP(ptr));
-        PUT(HDRP(ptr), adjust_size + remain + 1);
-        PUT(FTRP(ptr), adjust_size + remain + 1);
+        // 否则:检查物理后继是否free
+        else if ((!GET_ALLOC(HDRP(NEXT_BLKP(ptr)))) || (!GET_SIZE(HDRP(NEXT_BLKP(ptr)))))
+        {
+            if (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr))) < adjust_size)
+            {
+                if (extend_heap(MAX(CHUNKSIZE, -remain)) == NULL)
+                {
+                    return NULL;
+                }
+                remain += MAX(-remain, CHUNKSIZE);
+            }
+            // 从空闲表里删除
+            // delete (NEXT_BLKP(ptr));
+            PUT(HDRP(ptr), adjust_size + remain + 1);
+            PUT(FTRP(ptr), adjust_size + remain + 1);
+        }
+        // 没有新的可用连续空闲块，申请新的空闲块
+        else
+        {
+            newptr = mm_malloc(size);
+            // printf("ptr: %d\n", ptr);
+            memmove(newptr, ptr, GET_SIZE(HDRP(ptr)) - WSIZE);
+            // printf("newptr2: %d\n", newptr);
+            mm_free(ptr);
+        }
     }
-    // 没有新的可用连续空闲块，申请新的空闲块
+
     else
     {
+        size_t adjust_size = ALIGN(size);
+        size_t old_size = GET_SIZE(HDRP(ptr));
+        if (adjust_size < old_size)
+        {
+            return ptr;
+        }
+        size_t copySize;
         newptr = mm_malloc(size);
-        memcpy(newptr, ptr, GET_SIZE(HDRP(ptr)));
+        if (newptr == NULL)
+            return NULL;
+        size = GET_SIZE(HDRP(ptr));
+        copySize = GET_SIZE(HDRP(newptr));
+        if (size < copySize)
+            copySize = size;
+        memmove(newptr, ptr, copySize - WSIZE);
         mm_free(ptr);
     }
-    // void *newptr;
-    // size_t copySize;
-    // newptr = mm_malloc(size);
-    // if (newptr == NULL)
-    //     return NULL;
-    // size = GET_SIZE(HDRP(ptr));
-    // copySize = GET_SIZE(HDRP(newptr));
-    // if (size < copySize)
-    //     copySize = size;
-    // memmove(newptr, ptr, copySize - WSIZE);
-    // mm_free(ptr);
+    printf("ptr: %p\n", ptr);
+    printf("newptr2: %p\n", newptr);
     return newptr;
 }
 
