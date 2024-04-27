@@ -77,7 +77,7 @@ team_t team = {
 #define PREV_PTR(ptr) ((char *)(ptr))
 #define NEXT_PTR(ptr) ((char *)(ptr) + WSIZE)
 
-#define GET_PREV(ptr) (*(char **)(ptr))
+#define GET_PREV(ptr) (*(char **)(PREV_PTR(ptr)))
 #define GET_NEXT(ptr) (*(char **)(NEXT_PTR(ptr)))
 
 // 空闲链表最大个数
@@ -100,11 +100,13 @@ static char *pre_listp;
 
 static void insert(void *ptr, size_t size)
 {
+    printf("insert------------------------------------------\n");
     int index = 0;
     void *searchp = NULL; // 在segregated list中找
     void *insertp = NULL; // 找到index以后在链表里找
     size_t tmp_size = size;
-    while ((index < MAXLEN) && (tmp_size < 1))
+    printf("insert size: %d\n", size);
+    while ((index < MAXLEN) && (tmp_size > 1))
     {
         tmp_size >>= 1;
         index++;
@@ -155,7 +157,9 @@ static void insert(void *ptr, size_t size)
 }
 static void delete(void *ptr)
 {
+    printf("delete------------------------------------------\n");
     size_t size = GET_SIZE(HDRP(ptr));
+    printf("size: %d\n", size);
     int index = 0;
     while ((index < MAXLEN) && (size > 1))
     {
@@ -163,42 +167,51 @@ static void delete(void *ptr)
         index++;
     }
 
+    printf("index: %d\n", index);
     void *prev = GET_PREV(ptr);
     void *next = GET_NEXT(ptr);
-    if (prev)
+    printf("origin prev: %p\n, next: %p\n", GET_PREV(ptr), GET_NEXT(ptr));
+    if (GET_PREV(ptr))
     {
-        if (next)
+        if (GET_NEXT(ptr))
         {
             /*case 1: prev->ptr->next*/
-            SET(NEXT_PTR(GET_PREV(ptr)), next);
-            SET(PREV_PTR(GET_NEXT(ptr)), prev);
+            printf("case 1\n");
+            SET(NEXT_PTR(GET_PREV(ptr)), GET_NEXT(ptr));
+            SET(PREV_PTR(GET_NEXT(ptr)), GET_PREV(ptr));
         }
         else
         {
-            /*case 2: prev->ptr->next*/
+            /*case 2: prev->ptr*/
+            printf("case 2\n");
             SET(NEXT_PTR(GET_PREV(ptr)), NULL);
-            segregated_free_list[index] = prev;
+            segregated_free_list[index] = GET_PREV(ptr);
         }
     }
     else
     {
-        if (next)
+        if (GET_NEXT(ptr))
         {
             /*case 3: ->ptr->next*/
+            printf("case 3\n");
             SET(PREV_PTR(GET_NEXT(ptr)), NULL);
         }
         else
         {
             /*case 4: */
+            printf("case 4\n");
             segregated_free_list[index] = NULL;
         }
     }
+    printf("new prev: %p\n next: %p\n", GET_PREV(ptr), GET_NEXT(ptr));
+    printf("list header: %p\n", segregated_free_list[index]);
 }
 /*
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
+    printf("init------------------------------------------\n");
     /* Create the initial empty heap */
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
         return -1;
@@ -206,21 +219,22 @@ int mm_init(void)
     PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1)); /* Prologue header */
     PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
     PUT(heap_listp + (3 * WSIZE), PACK(0, 1));     /* Epilogue header */
-    // heap_listp += (2 * WSIZE);
+    heap_listp += (2 * WSIZE);
     // pre_listp = heap_listp;
     // 初始化空闲链表
     int i = 0;
     for (i = 0; i < MAXLEN; i++)
         segregated_free_list[i] = NULL;
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-    if (extend_heap(CHUNKSIZE0) == NULL)
+    if (extend_heap(CHUNKSIZE) == NULL)
         return -1;
-    printf("heap_listp: %c\n", heap_listp);
+    printf("heap_listp: %p\n", heap_listp);
     return 0;
 }
 
 static void *extend_heap(size_t words)
 {
+    printf("extend------------------------------------------\n");
     void *bp;
     size_t size;
 
@@ -244,11 +258,15 @@ static void *extend_heap(size_t words)
 
 static void place(void *bp, size_t asize)
 {
+    printf("place------------------------------------------\n");
+    printf("place size: %d\n", asize);
     size_t size = GET_SIZE(HDRP(bp));
     // 从空闲表中删除块
     delete (bp);
+    printf("delete over\n");
     if ((size - asize) >= (2 * DSIZE))
     {
+        printf("place case 1\n");
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
         PUT(HDRP(NEXT_BLKP(bp)), PACK(size - asize, 0));
@@ -258,10 +276,13 @@ static void place(void *bp, size_t asize)
     else
     {
         // 剩余的大小小于最小块，就不分离
+        printf("place case 2\n");
         PUT(HDRP(bp), PACK(size, 1));
+        printf("??\n");
         PUT(FTRP(bp), PACK(size, 1));
     }
     pre_listp = bp;
+    printf("place end-----------------------------------\n");
 }
 
 /*
@@ -269,6 +290,7 @@ static void place(void *bp, size_t asize)
  */
 void mm_free(void *bp)
 {
+    printf("free------------------------------------------\n");
     size_t size = GET_SIZE(HDRP(bp));
 
     PUT(HDRP(bp), PACK(size, 0));
@@ -279,6 +301,7 @@ void mm_free(void *bp)
 
 static void *coalesce(void *bp)
 {
+    printf("coalesce------------------------------------------\n");
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
@@ -324,6 +347,7 @@ static void *coalesce(void *bp)
     }
     pre_listp = bp;
     insert(bp, size);
+    printf("bp: %p\n", bp);
     return bp;
 }
 
@@ -333,7 +357,8 @@ static void *coalesce(void *bp)
  */
 void *mm_malloc(size_t size)
 {
-    size_t asize;      /* Adjusted block size */
+    printf("malloc------------------------------------------\n");
+    size_t asize = size;      /* Adjusted block size */
     size_t extendsize; /* Amount to extend heap if no fit */
     void *bp = NULL;
 
@@ -356,7 +381,7 @@ void *mm_malloc(size_t size)
             // 在链中找到空闲块
             while (bp && (asize > GET_SIZE(HDRP(bp))))
             {
-                bp =GET_PREV(bp);
+                bp = GET_PREV(bp);
             }
             if (bp)
                 break;
@@ -387,6 +412,7 @@ void *mm_malloc(size_t size)
 
 void *mm_realloc(void *ptr, size_t size)
 {
+    printf("realloc------------------------------------------\n");
     if (ptr == NULL)
         return mm_malloc(size);
     if (size == 0)
