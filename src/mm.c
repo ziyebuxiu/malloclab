@@ -302,17 +302,17 @@ static void *find_fit(size_t asize)
     char *cur_listp = pre_listp;
 
     /* Search from the pre_listp to the end of list */
-    while (GET_SIZE(HDRP(pre_listp)) > 0)
+    while (GET_SIZE(HDRP(cur_listp)) > 0)
     {
-        if ((!GET_ALLOC(HDRP(pre_listp)) && (asize <= GET_SIZE(HDRP(pre_listp)))) && !(GET_TAG(HDRP(pre_listp))))
-            return pre_listp;
-        pre_listp = NEXT_BLKP(pre_listp);
+        if ((!GET_ALLOC(HDRP(cur_listp)) && (asize <= GET_SIZE(HDRP(cur_listp)))) && !(GET_TAG(HDRP(cur_listp))))
+            return cur_listp;
+        cur_listp = NEXT_BLKP(cur_listp);
     }
 
     /* search from start of list to old pre_listp */
-    for (pre_listp = heap_listp; pre_listp < cur_listp; pre_listp = NEXT_BLKP(pre_listp))
-        if ((!GET_ALLOC(HDRP(pre_listp)) && (asize <= GET_SIZE(HDRP(pre_listp)))) && !(GET_TAG(HDRP(pre_listp))))
-            return pre_listp;
+    for (cur_listp = heap_listp; cur_listp < pre_listp; cur_listp = NEXT_BLKP(cur_listp))
+        if ((!GET_ALLOC(HDRP(cur_listp)) && (asize <= GET_SIZE(HDRP(cur_listp)))) && !(GET_TAG(HDRP(cur_listp))))
+            return cur_listp;
 
     return NULL; /* no fit found */
 }
