@@ -78,7 +78,7 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
 
-#define BUFFER (1 << 7)
+// #define BUFFER (1 << 2)
 
 static void *extend_heap(size_t words);
 // static void *next_fit(size_t asize);
@@ -249,7 +249,7 @@ void *mm_realloc(void *ptr, size_t size)
     // size_t old_size = GET_SIZE(HDRP(ptr));
     void *newptr = ptr;
     // size_t copySize;
-    int remain, extend_size, buffer_size;
+    int remain, extend_size, spare;
 
     if (size == 0)
     {
@@ -258,14 +258,14 @@ void *mm_realloc(void *ptr, size_t size)
     if (adjust_size <= DSIZE)
         adjust_size = FSIZE;
     else
-        adjust_size = DSIZE * ((adjust_size +(FSIZE - 1)) / DSIZE);
+        adjust_size = DSIZE * ((adjust_size + (FSIZE - 1)) / DSIZE);
 
-    adjust_size += BUFFER;
-    buffer_size = GET_SIZE(HDRP(ptr)) - adjust_size;
+    //计算当前块分配内存以后多出来的部分的大小
+    spare = GET_SIZE(HDRP(ptr)) - adjust_size;
 
-    if (buffer_size < 0)
-    {
-        /* Check if next block is a free block or the epilogue block */
+    if (spare < 0)
+    {   //如果位置不够
+        /* 检查下一块是不是空闲块或epilogue block */
         if (!GET_ALLOC(HDRP(NEXT_BLKP(ptr))) || !GET_SIZE(HDRP(NEXT_BLKP(ptr))))
         {
             remain = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr))) - adjust_size;
@@ -283,25 +283,32 @@ void *mm_realloc(void *ptr, size_t size)
         }
         else
         {
+            //如果位置够就realloc
             newptr = mm_malloc(adjust_size - DSIZE);
             memmove(newptr, ptr, MIN(size, adjust_size));
             mm_free(ptr);
         }
-        buffer_size = GET_SIZE(HDRP(newptr)) - adjust_size;
+        //记得更新一下
+        spare = GET_SIZE(HDRP(newptr)) - adjust_size;
     }
 
-    if (buffer_size < 2 * BUFFER)
+    //对齐一下
+    if (spare < DSIZE)
         SET_TAG(HDRP(NEXT_BLKP(newptr)));
+        
     return newptr;
 }
 
 static void *find_fit(size_t asize)
 {
-    //直接改动pre_listp是91, 新开一个cur_listp，pre_listp不变可以92
+    // 直接改动pre_listp是91,
+    // 因为pre_listp是全局变量，最好pre_listp不变，所以新开一个cur_listp，这样可以92
     /* Next fit */
     char *cur_listp = pre_listp;
+    // 以pre_listp为界线
+    // 这里要先从pre_listp到链尾，虽然从头开始搜索内存利用率变高了，但吞吐量会很低，综合起来得分反而更低，只有74
 
-    /* Search from the pre_listp to the end of list */
+    /* 从pre_listp到链尾 */
     while (GET_SIZE(HDRP(cur_listp)) > 0)
     {
         if ((!GET_ALLOC(HDRP(cur_listp)) && (asize <= GET_SIZE(HDRP(cur_listp)))) && !(GET_TAG(HDRP(cur_listp))))
@@ -309,75 +316,10 @@ static void *find_fit(size_t asize)
         cur_listp = NEXT_BLKP(cur_listp);
     }
 
-    /* search from start of list to old pre_listp */
+    /* 从链头到pre_listp */
     for (cur_listp = heap_listp; cur_listp < pre_listp; cur_listp = NEXT_BLKP(cur_listp))
         if ((!GET_ALLOC(HDRP(cur_listp)) && (asize <= GET_SIZE(HDRP(cur_listp)))) && !(GET_TAG(HDRP(cur_listp))))
             return cur_listp;
 
-    return NULL; /* no fit found */
+    return NULL;
 }
-// static void *next_fit(size_t size)
-// {
-//     void *bp;
-//     void *min = pre_listp;
-//     int extra = 50;
-//     for (; GET_SIZE(HDRP(min)) > 0; min = NEXT_BLKP(min))
-//     {
-//         if (!GET_ALLOC(HDRP(min)) && (size <= GET_SIZE(HDRP(min))))
-//         {
-//             break;
-//         }
-//     }
-//     int count = 0;
-//     for (bp = pre_listp; GET_SIZE(HDRP(bp)) > 0 && count < extra; bp = NEXT_BLKP(bp))
-//     {
-//         count++;
-//         if (!GET_ALLOC(HDRP(bp)) && (size <= GET_SIZE(HDRP(bp))))
-//         {
-//             if (GET_SIZE(HDRP(min)) > GET_SIZE(HDRP(bp)))
-//             {
-//                 min = bp;
-//             }
-//         }
-//     }
-
-//     bp = min;
-
-//     if (!GET_ALLOC(HDRP(min)) && (size <= GET_SIZE(HDRP(min))))
-//     {
-//         pre_listp = bp;
-//         return bp;
-//     }
-
-//     for (min = heap_listp; GET_SIZE(HDRP(min)) > 0; min = NEXT_BLKP(min))
-//     {
-//         if (!GET_ALLOC(HDRP(min)) && (size <= GET_SIZE(HDRP(min))))
-//         {
-//             break;
-//         }
-//     }
-
-//     count = 0;
-
-//     for (bp = pre_listp; GET_SIZE(HDRP(bp)) > 0 && count < extra; bp = NEXT_BLKP(bp))
-//     {
-//         count++;
-//         if (!GET_ALLOC(HDRP(bp)) && (size <= GET_SIZE(HDRP(bp))))
-//         {
-//             if (GET_SIZE(HDRP(min)) > GET_SIZE(HDRP(bp)))
-//             {
-//                 min = bp;
-//             }
-//         }
-//     }
-
-//     bp = min;
-
-//     if (!GET_ALLOC(HDRP(min)) && (size <= GET_SIZE(HDRP(min))))
-//     {
-//         pre_listp = bp;
-//         return bp;
-//     }
-
-//     return NULL; /* No fit */
-// }
