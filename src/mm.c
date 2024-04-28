@@ -24,11 +24,11 @@
  ********************************************************/
 team_t team = {
     /* Team name */
-    "None",
+    "H",
     /* First member's full name */
-    "None",
+    "H",
     /* First member's email address */
-    "None",
+    "H",
     /* Second member's full name (leave blank if none) */
     "",
     /* Second member's email address (leave blank if none) */
@@ -78,10 +78,7 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
 
-// #define BUFFER (1 << 2)
-
 static void *extend_heap(size_t words);
-// static void *next_fit(size_t asize);
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
 static void *coalesce(void *bp);
@@ -115,7 +112,6 @@ static void *extend_heap(size_t words)
     size_t size;
 
     /* Allocate an even number of words to maintain alignment */
-    // size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
     size = ALIGN(words);
     if ((bp = mem_sbrk(size)) == (void *)-1)
         return NULL;
@@ -145,7 +141,6 @@ static void place(void *bp, size_t asize)
         PUT_WITH_TAG(HDRP(bp), PACK(size, 1));
         PUT_WITH_TAG(FTRP(bp), PACK(size, 1));
     }
-    // pre_listp = bp;
 }
 
 /*
@@ -295,7 +290,7 @@ void *mm_realloc(void *ptr, size_t size)
     //对齐一下
     if (spare < DSIZE)
         SET_TAG(HDRP(NEXT_BLKP(newptr)));
-        
+
     return newptr;
 }
 
